@@ -6,27 +6,30 @@ from typing import List, Optional
 from urllib.parse import urlparse, parse_qs
 
 from marzban_api_client.api.user import add_user, get_user, delete_expired_users
-from marzban_api_client.models import UserCreate, UserCreateProxies, UserResponse, UserCreateInbounds, UserDataLimitResetStrategy
+from marzban_api_client.models import (
+    UserCreate,
+    UserCreateProxies,
+    UserResponse,
+    UserCreateInbounds,
+    UserDataLimitResetStrategy,
+)
 from marzban_api_client.types import Response
 
 from loader import marzban_client
 
 logger = logging.getLogger(__name__)
-proxies = {
-#    "vmess": {},
-#    "vless": {
-#        "flow": ""
-#    },
-#    "trojan": {},
-    "shadowsocks": {
-        "method": "chacha20-ietf-poly1305"
-    }
-}
-proxies = UserCreateProxies.from_dict(proxies)
+
+# Use VLESS via the working WS-TLS inbound (configured in our Marzban panel).
+# flow is empty intentionally — without xtls-rprx-vision the link is
+# compatible with the widest range of clients (Happ, Streisand, V2Box, etc.)
+proxies = UserCreateProxies.from_dict({
+    "vless": {"flow": ""}
+})
 
 inbounds = UserCreateInbounds.from_dict({
-    "Shadowsocks TCP": True
+    "VLESS WS TLS": True
 })
+
 
 def expire_timestamp(expire: datetime):
     new_utc_timestamp = int(expire.timestamp())
@@ -41,26 +44,27 @@ async def create_user(sub_id: str, expire: datetime) -> bool:
         data_limit_reset_strategy=UserDataLimitResetStrategy.NO_RESET,
         expire=exp_timestamp,
         inbounds=inbounds,
-        proxies=proxies
+        proxies=proxies,
     )
 
-    logger.info("📤 Создание пользователя с данными:")
+    logger.info("Creating Marzban user with payload:")
     logger.info(json.dumps(user_data.to_dict(), indent=2, ensure_ascii=False))
 
     client = await marzban_client.get_client()
     response: Response = add_user.sync_detailed(client=client, body=user_data)
 
-    logger.info(f"📥 Ответ от Marzban: {response.status_code}")
+    logger.info(f"Marzban response status: {response.status_code}")
     if response.status_code != 200:
-        logger.warning(f"⚠️ Не удалось создать пользователя: {response.content}")
+        logger.warning(f"Failed to create user: {response.content}")
         return False
 
     return True
 
 
 async def get_marz_user(sub_id: str) -> UserResponse:
-    response: Response = await get_user.asyncio_detailed(sub_id,
-                                                         client=await marzban_client.get_client())
+    response: Response = await get_user.asyncio_detailed(
+        sub_id, client=await marzban_client.get_client()
+    )
     return response.parsed
 
 
@@ -98,6 +102,7 @@ async def get_user_links(sub_id: str) -> str:
 
 async def delete_users():
     local_utc_time = datetime.utcnow()
-    response: Response = await delete_expired_users.asyncio_detailed(expired_before=local_utc_time,
-                                                                     client=await marzban_client.get_client())
+    response: Response = await delete_expired_users.asyncio_detailed(
+        expired_before=local_utc_time, client=await marzban_client.get_client()
+    )
     logger.info(f'DELETE USERS RESPONSE: {response.parsed}')
