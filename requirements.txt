@@ -7,3 +7,4 @@ requests~=2.31.0
 cachetools~=5.3.3
 marzban-api-client~=0.4.9
 betterlogging~=1.0.0
+asyncpg~=0.29.0
